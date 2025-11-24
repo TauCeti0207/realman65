@@ -7,7 +7,7 @@ dist/
 build/
 
 
-rm_description/
+rm_description
 
 # ROS2 相关
 build/
