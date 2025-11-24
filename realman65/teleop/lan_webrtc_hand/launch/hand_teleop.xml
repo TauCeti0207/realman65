@@ -1,0 +1,22 @@
+<launch>
+    <arg name="server" default="ws://127.0.0.1:8000"/>
+    <arg name="room" default="10.192.1.3"/>
+    <arg name="camera" default="4"/>
+    <arg name="device" default="brainco2"/>
+    <arg name="control_type" default="upper_body"/>
+
+    <node pkg="lan_webrtc_hand" exec="server" name="signaling_server" output="screen"/>
+
+    <node pkg="lan_webrtc_hand" exec="quest_sender" name="quest_sender" output="screen">
+        <param name="server" value="$(var server)"/>
+        <param name="room" value="$(var room)"/>
+        <param name="camera" value="$(var camera)"/>
+        <param name="control_type" value="$(var control_type)"/>
+        <param name="device" value="$(var device)"/>
+    </node>
+
+    <node pkg="lan_webrtc_hand" exec="hand_teleop" name="hand_teleop" output="screen">
+        <param name="device" value="$(var device)"/>
+    </node>
+
+</launch>

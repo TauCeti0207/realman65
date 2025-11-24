@@ -1,0 +1,9 @@
+scipy==1.15.3
+numpy==1.26.4
+h5py
+pyrealsense2
+opencv-python
+keyboard
+Robotic-Arm==1.1.1
+pure-python-adb
+pyyaml

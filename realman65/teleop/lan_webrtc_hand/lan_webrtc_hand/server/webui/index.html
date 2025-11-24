@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebRTC 信令服务器控制台</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; margin: 0; padding: 0; color: #222; }
+    header { background: #0d47a1; color: #fff; padding: 12px 16px; }
+    main { padding: 16px; }
+    h1 { margin: 0; font-size: 18px; }
+    .row { display: flex; gap: 16px; align-items: stretch; }
+    .col { flex: 1; min-width: 320px; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th, td { padding: 6px 8px; border-bottom: 1px solid #eee; text-align: left; }
+    th { background: #f0f4ff; }
+    button { cursor: pointer; border: 1px solid #1976d2; background: #1976d2; color: #fff; padding: 6px 10px; border-radius: 4px; }
+    button.secondary { background: #fff; color: #1976d2; }
+    .pill { display: inline-block; padding: 2px 6px; border-radius: 999px; font-size: 12px; background: #e3f2fd; color: #1976d2; }
+    video { width: 100%; max-height: 360px; background: #000; }
+    .muted { color: #777; }
+    .toolbar { display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+    .input { padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>WebRTC 信令服务器控制台</h1>
+  </header>
+  <main>
+    <div class="toolbar">
+      <label>服务器:</label>
+      <input id="server" class="input" size="28" />
+      <button id="refresh">刷新房间</button>
+    </div>
+    <div class="row">
+      <div class="col">
+        <h3>房间列表</h3>
+        <table>
+          <thead>
+            <tr><th>房间ID</th><th>人数</th><th>发布者</th><th>订阅者</th><th>操作</th></tr>
+          </thead>
+          <tbody id="rooms"></tbody>
+        </table>
+      </div>
+      <div class="col">
+        <h3>房间详情 <span id="roomTitle" class="muted"></span></h3>
+        <table>
+          <thead>
+            <tr><th>ClientID</th><th>类型</th><th>显示名</th><th>视频</th><th>操作</th></tr>
+          </thead>
+          <tbody id="clients"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px;">
+      <div id="videoPanel" class="col" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0;">实时视频 <span id="videoTitle" class="muted"></span></h3>
+          <div class="toolbar">
+            <button id="closeVideo" class="secondary">关闭</button>
+          </div>
+        </div>
+        <video id="player" autoplay playsinline controls></video>
+        <div class="toolbar">
+          <label>作为</label>
+          <select id="role" class="input">
+            <option value="subscriber" selected>订阅者</option>
+          </select>
+          <label>房间</label>
+          <input id="roomInput" class="input" size="14" placeholder="room_id" />
+          <label>显示名</label>
+          <input id="nameInput" class="input" size="12" placeholder="WebUI" />
+        </div>
+      </div>
+      <div id="dataPanel" class="col" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0;">实时数据 <span id="dataTitle" class="muted"></span></h3>
+          <div class="toolbar">
+            <button id="clearData" class="secondary">清空</button>
+            <button id="closeData" class="secondary">关闭</button>
+          </div>
+        </div>
+        <div id="dataLog" style="height:340px; overflow:auto; font-family:monospace; background:#111; color:#9ef; padding:8px; border-radius:6px;"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const api = {
+      async rooms(base) { const r = await fetch(base + '/rooms'); return r.json(); },
+      async room(base, id) { const r = await fetch(base + '/rooms/' + encodeURIComponent(id)); return r.json(); },
+    };
+
+    const ui = {
+      base: '',
+      wsBase: '',
+      currentRoom: '',
+      wsVideo: null,
+      pcVideo: null,
+      wsData: null,
+      pcData: null,
+      init() {
+        const loc = window.location;
+        // 推断 API 基础地址
+        this.base = loc.origin.replace(/\/$/, '');
+        this.wsBase = this.base.replace('http', 'ws');
+        $('#server').value = this.base;
+        $('#refresh').onclick = () => this.loadRooms();
+        const clearBtn = $('#clearData');
+        const closeV = $('#closeVideo');
+        const closeD = $('#closeData');
+        if (clearBtn) clearBtn.onclick = () => { $('#dataLog').innerHTML = ''; };
+        if (closeV) closeV.onclick = () => this.closeVideo();
+        if (closeD) closeD.onclick = () => this.closeData();
+        this.loadRooms();
+      },
+      async loadRooms() {
+        try {
+          const data = await api.rooms(this.base);
+          const tbody = $('#rooms');
+          tbody.innerHTML = '';
+          (data.rooms || []).forEach(room => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${room.room_id}</td><td>${room.client_count}</td><td>${room.publisher_count}</td><td>${room.subscriber_count}</td>` +
+              `<td><button class="secondary" data-room="${room.room_id}">查看</button></td>`;
+            const btn = tr.querySelector('button');
+            btn.onclick = () => this.showRoom(room.room_id);
+            tbody.appendChild(tr);
+          });
+        } catch (e) { console.error(e); }
+      },
+      async showRoom(roomId) {
+        this.currentRoom = roomId;
+        $('#roomTitle').textContent = roomId;
+        try {
+          const room = await api.room(this.base, roomId);
+          const tbody = $('#clients');
+          tbody.innerHTML = '';
+          (room.clients || []).forEach(c => {
+            const hasVideo = c.video_available ? '<span class="pill">可用</span>' : '';
+            const tr = document.createElement('tr');
+            let actionHtml = '-';
+            if (c.client_type === 'video_publisher') {
+              actionHtml = `<button data-act="watch" data-id="${c.client_id}" data-name="${c.display_name}">查看视频</button>`;
+            } else if (c.client_type === 'data_publisher') {
+              actionHtml = `<button data-act="datasub" data-id="${c.client_id}" data-name="${c.display_name}">订阅数据</button>`;
+            }
+            tr.innerHTML = `<td>${c.client_id}</td><td>${c.client_type}</td><td>${c.display_name}</td><td>${hasVideo}</td><td>${actionHtml}</td>`;
+            const btn = tr.querySelector('button');
+            if (btn) {
+              const act = btn.getAttribute('data-act');
+              const id = btn.getAttribute('data-id');
+              const name = btn.getAttribute('data-name');
+              if (act === 'watch') btn.onclick = () => this.watchVideo(id, name);
+              if (act === 'datasub') btn.onclick = () => this.subscribeData(id, name);
+            }
+            tbody.appendChild(tr);
+          });
+        } catch (e) { console.error(e); }
+      },
+      watchVideo(publisherId, publisherName) {
+        const roomId = this.currentRoom || $('#roomInput').value || 'test_room';
+        const displayName = $('#nameInput').value || 'WebUI';
+        const clientId = 'webui_v_' + Math.random().toString(16).slice(2,10);
+        const wsUrl = `${this.wsBase}/ws/${clientId}`;
+
+        if (this.wsVideo) { try { this.wsVideo.close(); } catch(e){} this.wsVideo = null; }
+        if (this.pcVideo) { try { this.pcVideo.close(); } catch(e){} this.pcVideo = null; }
+        // 显示面板
+        $('#videoPanel').style.display = 'block';
+        $('#videoTitle').textContent = `(${publisherName})`;
+        $('#player').srcObject = null;
+
+        this.wsVideo = new WebSocket(wsUrl);
+        this.wsVideo.onopen = () => {
+          this._send(this.wsVideo, {type:'register', client_type:'subscriber', client_name:displayName});
+          setTimeout(()=>{
+            this._send(this.wsVideo, {type:'join_room', room_id:roomId, display_name:displayName});
+            setTimeout(()=>{ this._send(this.wsVideo, {type:'subscribe_video', publisher_id: publisherId}); }, 200);
+          }, 100);
+        };
+        this.wsVideo.onmessage = (ev) => this._onSignalVideo(ev.data, publisherId);
+      },
+      async _onSignalVideo(message, expectPublisherId) {
+        let data = {}; try { data = JSON.parse(message); } catch(_){}
+        const t = data.type;
+        if (t === 'offer' && data.from_client_id === expectPublisherId) {
+          await this._acceptOfferVideo(data.from_client_id, data.sdp);
+        } else if (t === 'ice_candidate') {
+          const cand = data.candidate; if (!cand || !this.pcVideo) return;
+          try { await this.pcVideo.addIceCandidate(cand); } catch(e) { console.warn(e); }
+        }
+      },
+      async _acceptOfferVideo(fromId, sdp) {
+        this.pcVideo = new RTCPeerConnection();
+        this.pcVideo.onicecandidate = (ev) => {
+          if (ev.candidate) this._send(this.wsVideo, {type:'ice_candidate', target_client_id: fromId, candidate: ev.candidate});
+        };
+        this.pcVideo.ontrack = (ev) => { $('#player').srcObject = ev.streams[0]; };
+        await this.pcVideo.setRemoteDescription({type:'offer', sdp});
+        const answer = await this.pcVideo.createAnswer();
+        await this.pcVideo.setLocalDescription(answer);
+        this._send(this.wsVideo, {type:'answer', target_client_id: fromId, sdp: answer.sdp});
+      },
+      subscribeData(publisherId, publisherName) {
+        const roomId = this.currentRoom || $('#roomInput').value || 'test_room';
+        const displayName = $('#nameInput').value || 'WebUI';
+        const clientId = 'webui_d_' + Math.random().toString(16).slice(2,10);
+        const wsUrl = `${this.wsBase}/ws/${clientId}`;
+
+        if (this.wsData) { try { this.wsData.close(); } catch(e){} this.wsData = null; }
+        if (this.pcData) { try { this.pcData.close(); } catch(e){} this.pcData = null; }
+        // 显示面板
+        $('#dataPanel').style.display = 'block';
+        $('#dataTitle').textContent = `(${publisherName})`;
+        $('#dataLog').innerHTML = '';
+
+        this.wsData = new WebSocket(wsUrl);
+        this.wsData.onopen = () => {
+          this._send(this.wsData, {type:'register', client_type:'data_subscriber', client_name:displayName});
+          setTimeout(()=>{
+            this._send(this.wsData, {type:'join_room', room_id:roomId, display_name:displayName});
+            setTimeout(()=>{ this._send(this.wsData, {type:'subscribe_data', publisher_id: publisherId}); }, 200);
+          }, 100);
+        };
+        this.wsData.onmessage = (ev) => this._onSignalData(ev.data, publisherId);
+      },
+      async _onSignalData(message, expectPublisherId) {
+        let data = {}; try { data = JSON.parse(message); } catch(_){}
+        const t = data.type;
+        if (t === 'offer' && data.from_client_id === expectPublisherId) {
+          await this._acceptOfferData(data.from_client_id, data.sdp);
+        } else if (t === 'ice_candidate') {
+          const cand = data.candidate; if (!cand || !this.pcData) return;
+          try { await this.pcData.addIceCandidate(cand); } catch(e) { console.warn(e); }
+        }
+      },
+      async _acceptOfferData(fromId, sdp) {
+        this.pcData = new RTCPeerConnection();
+        this.pcData.onicecandidate = (ev) => {
+          if (ev.candidate) this._send(this.wsData, {type:'ice_candidate', target_client_id: fromId, candidate: ev.candidate});
+        };
+        this.pcData.ondatachannel = (ev) => {
+          const ch = ev.channel;
+          ch.onmessage = (e) => {
+            const log = $('#dataLog');
+            const time = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.textContent = `[${time}] ${e.data}`;
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+          };
+        };
+        await this.pcData.setRemoteDescription({type:'offer', sdp});
+        const answer = await this.pcData.createAnswer();
+        await this.pcData.setLocalDescription(answer);
+        this._send(this.wsData, {type:'answer', target_client_id: fromId, sdp: answer.sdp});
+      },
+      closeVideo() {
+        try { if (this.wsVideo) this.wsVideo.close(); } catch(e){}
+        try { if (this.pcVideo) this.pcVideo.close(); } catch(e){}
+        this.wsVideo = null; this.pcVideo = null;
+        const v = $('#player'); if (v) v.srcObject = null;
+        $('#videoPanel').style.display = 'none';
+      },
+      closeData() {
+        try { if (this.wsData) this.wsData.close(); } catch(e){}
+        try { if (this.pcData) this.pcData.close(); } catch(e){}
+        this.wsData = null; this.pcData = null;
+        $('#dataPanel').style.display = 'none';
+      },
+      _send(sock, msg) { try { sock && sock.send(JSON.stringify(msg)); } catch(e) { console.error(e);} }
+    };
+
+    ui.init();
+  </script>
+</body>
+</html>
+
+

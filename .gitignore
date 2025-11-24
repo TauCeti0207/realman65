@@ -1,0 +1,29 @@
+# Python 冗余文件
+__pycache__/
+*.py[cod]
+*.class
+*.egg-info/
+dist/
+build/
+
+# ROS2 相关
+build/
+install/
+log/
+devel/
+*.rosinstall
+COLCON_IGNORE
+
+# 系统/工具文件
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# 日志与核心转储
+*.log
+core.*
+*.dump
+
+
