@@ -6,6 +6,8 @@ __pycache__/
 dist/
 build/
 
+
+realman65/third_party
 # ROS2 相关
 build/
 install/

@@ -432,7 +432,7 @@ class DualArmTeleop:
                 if left_pose_to_send is not None or right_pose_to_send is not None:
                     cprint(f"left_pose_to_send: {left_pose_to_send}", "green")
                     cprint(f"right_pose_to_send: {right_pose_to_send}", "red")
-                    self.rm_interface.update(left_pose_to_send, right_pose_to_send)
+                    # self.rm_interface.update(left_pose_to_send, right_pose_to_send)
             except Exception as exc:
                 debug_print("teleop", f"send dual pose failed: {exc}", "WARNING")
 
