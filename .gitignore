@@ -7,7 +7,8 @@ dist/
 build/
 
 
-realman65/third_party
+rm_description/
+
 # ROS2 相关
 build/
 install/
