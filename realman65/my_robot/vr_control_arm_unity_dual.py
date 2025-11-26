@@ -23,8 +23,8 @@ from termcolor import cprint
 
 
 ADJ_MAT = np.array([
-    [1, 0,  0, 0],
-    [0, 1,  0, 0],
+    [-1, 0,  0, 0],
+    [0, -1,  0, 0],
     [0, 0,  1, 0],
     [0, 0,  0, 1],
 ], dtype=np.float64)
@@ -48,7 +48,7 @@ class TFTeleopClient(rclpy.node.Node):
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
-            self.get_logger().warning("Invalid controller JSON payload")
+            cprint(f"Invalid controller JSON payload:", "red")
             return
         if callable(self._on_controller_state_cb):
             self._on_controller_state_cb(payload)
@@ -406,7 +406,7 @@ class DualArmTeleop:
                 if right_vr_pose is not None:
                     if not self.right_retarget_done and robot_pose_map and "right_arm" in robot_pose_map:
                         robot_pose_right = np.asarray(robot_pose_map["right_arm"], dtype=np.float64)
-                        robot_pose_right[1] += 0.5  # 右臂 y 轴偏移
+                        robot_pose_right[1] += 0.66  # 右臂 y 轴偏移
                         self._retarget_once("right", right_vr_pose, robot_pose_right)
                     if self.right_retarget_done:
                         self.right_target_pose = self._apply_retarget("right", right_vr_pose)

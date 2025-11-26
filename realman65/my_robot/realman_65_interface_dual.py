@@ -183,17 +183,26 @@ class Realman65Interface:
             debug_print(
                 "robot", f"{arm_name} connected to {self.rm_config[ip_key]}", "INFO")
 
+    # def reset(self) -> None:
+    #     """将已启用的机械臂复位到预设安全姿态。"""
+    #     for arm_name, controller in self.controllers.items():
+    #         joint_key = f"{arm_name.replace('_arm', '')}_start_position"
+    #         start_pose = self.joint_config.get(joint_key)
+    #         if start_pose is None:
+    #             debug_print("robot", f"{arm_name} 缺少复位角度配置，跳过", "WARNING")
+    #             continue
+    #         controller.reset(start_pose)
+    #         debug_print(
+    #             "robot", f"{arm_name} reset to preset joint angles", "INFO")
     def reset(self) -> None:
-        """将已启用的机械臂复位到预设安全姿态。"""
-        for arm_name, controller in self.controllers.items():
-            joint_key = f"{arm_name.replace('_arm', '')}_start_position"
-            start_pose = self.joint_config.get(joint_key)
-            if start_pose is None:
-                debug_print("robot", f"{arm_name} 缺少复位角度配置，跳过", "WARNING")
-                continue
-            controller.reset(start_pose)
-            debug_print(
-                "robot", f"{arm_name} reset to preset joint angles", "INFO")
+        left_start_pose =  self.joint_config.get('left_start_position')
+        right_start_pose =  self.joint_config.get('right_start_position')
+        self.set_joint_angles('left_arm',left_start_pose)
+        self.set_joint_angles('right_arm',right_start_pose)
+        debug_print("robot", "left_arm reset to preset joint angles", "INFO")
+        debug_print("robot", "right_arm reset to preset joint angles", "INFO")
+        self.set_gripper('left_arm',0)
+        self.set_gripper('right_arm',0)
 
     def get_end_effector_pose(self,
                               arm_names: Optional[Iterable[str]] = None,
@@ -211,17 +220,6 @@ class Realman65Interface:
         send_angles = 0.6 * np.array(target_joint_angles) + 0.4 * np.array(current_angles)
         return send_angles
     
-    # def low_pass_filter(self, target_joint_angles, arm_name: str):
-    #     # 以“上次已发送的关节角”作为参考，避免每周期读取机器人状态造成阻塞
-    #     prev = self._last_sent_joint_rad.get(arm_name)
-    #     target = np.array(target_joint_angles, dtype=float)
-    #     if prev is None:
-    #         return target
-    #     alpha = 0.6  # 保持与原逻辑相近的权重（目标占 0.6）
-    #     send_angles = alpha * target + (1.0 - alpha) * np.array(prev, dtype=float)
-    #     # 更新缓存
-    #     self._last_sent_joint_rad[arm_name] = send_angles.tolist()
-    #     return send_angles
     
     def get_joint_angles(self,
                          arm_names: Optional[Iterable[str]] = None,
@@ -338,7 +336,7 @@ class Realman65Interface:
                     arm_name: str,
                     value: int,
                     speed: int = 1000,
-                    force: int = 1000,
+                    force: int = 9999,
                     blocking: bool = False,
                     timeout: int = 0) -> None:
         """

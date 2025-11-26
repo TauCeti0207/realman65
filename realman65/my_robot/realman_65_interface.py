@@ -29,8 +29,8 @@ from realman65.my_robot.pink_ik import ArmIKSolver
 import threading
 
 DEFAULT_RM65_CONFIG = {
-    'left_arm_ip': "192.168.2.19",
-    'right_arm_ip': "192.168.1.18",
+    'left_arm_ip': "192.168.1.18",
+    'right_arm_ip': "192.168.2.19",
     'thread_mode': rm_thread_mode_e.RM_TRIPLE_MODE_E,
     'control_freq': 0.014285,
 }
@@ -39,6 +39,7 @@ DEFAULT_JOINT_CONFIG = {
     # 'left_start_position': [-28, 17, 83, -3, 67, -179],
     # 'left_start_position': [-1.48, 33.7, 79, 0, 60, -158], # 最开始初始
     # 'left_start_position': [-35, 36, 86, 1.9, 50, -158], # temp 靠近杯子
+    # 'left_start_position': [-6, -14, 7, 4.8, 71, -160], # 有障碍物 棕色杯子
     'left_start_position': [-95, 10, 58, 5, 65, -169], # 有障碍物 棕色杯子
     # 'left_start_position': [-5, 10, 58, 5, 65, -169], # 有障碍物 瑞星杯子
     'right_start_position': [-95, 10, 58, 5, 65, -169],

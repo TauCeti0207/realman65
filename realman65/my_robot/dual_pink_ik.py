@@ -78,7 +78,7 @@ class DualArmIKSolver:
         print(f"[Pink Dual-Arm IK] Using solver: {self.solver}")
 
         self.dt = 1 / 100.0
-        self.max_iter = 3000
+        self.max_iter = 100
 
 
     # ============================================================
@@ -130,6 +130,7 @@ class DualArmIKSolver:
         self.set_right_target(right_pos, right_quat)
 
         it = 0
+        
         while it < self.max_iter:
             it += 1
             self.step()
@@ -171,7 +172,7 @@ class DualArmIKSolver:
             left_pos = center + \
                 np.array([0.0, radius * np.cos(omega * t),
                          radius * np.sin(omega * t)])
-            left_quat = R.from_euler('zyx',[ 3.05727925, -0.02256491,  0.66418082]).as_quat("xyzw")
+            left_quat = R.from_euler('xyz',[ 3.05727925, -0.02256491,  0.66418082]).as_quat("xyzw")
             right_pos = center + np.array([0.0, radius * np.cos(omega * t)+0.5,radius * np.sin(omega * t)])
             right_quat = left_quat.copy()
             

@@ -112,21 +112,26 @@ class ArmIKSolver:
         # target_position = np.array([-0.415195, 0.014819, 0.209343])
         # target_quat = R.from_euler("xyz", [3., -0.027, 0.663]).as_quat("wxyz")
         while True:
+            time0 = time.time()
             radius = 0.2 
             center = np.array([-0.25, 0.191, 0.229])
             omega = 2 * np.pi / 3.0
             pos = center + \
                 np.array([0.0, radius * np.cos(omega * t),
                          radius * np.sin(omega * t)])
-            quat = R.from_euler('zyx',[ 3.05727925, -0.02256491,  0.66418082]).as_quat("xyzw")
+            quat = R.from_euler('xyz',[ 3.05727925, -0.02256491,  0.66418082]).as_quat("xyzw")
+            time1 = time.time()
             self.set_target(pos, quat)
+            time2 = time.time()
             self.step()
+            time3 = time.time()
             elapse_time = time.time() - t_start
             time.sleep(max(0.0, self.dt - elapse_time))
+            print(f"time0:{time0},time1:{time1-time0},time2:{time2-time1},time3:{time3-time2}")
             t_start = time.time()
             t += self.dt
-            error_vector = self.ee_task.compute_error(self.configuration)
-            print(np.linalg.norm(error_vector[3:]))
+            # error_vector = self.ee_task.compute_error(self.configuration)
+            # print(np.linalg.norm(error_vector[3:]))
     
     def move_to_pose_and_get_joints(self, target_pos, target_quat, 
                                     pos_threshold=1e-4,  # 位置阈值 (0.1mm)
