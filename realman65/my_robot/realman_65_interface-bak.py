@@ -41,16 +41,15 @@ DEFAULT_JOINT_CONFIG = {
     # 'left_start_position': [-1.48, 33.7, 79, 0, 60, -158], # 最开始初始
     # 'left_start_position': [-35, 36, 86, 1.9, 50, -158], # temp 靠近杯子
     # 'left_start_position': [-6, -14, 7, 4.8, 71, -160], # 有障碍物 棕色杯子
-    # 'left_start_position': [-95, 10, 58, 5, 65, -169], # 单臂有障碍物 棕色杯子
-    'left_start_position': [0, 44, 114, 3, -66, -1], # 双臂的位置
+    'left_start_position': [-95, 10, 58, 5, 65, -169], # 有障碍物 棕色杯子
     # 'left_start_position': [-5, 10, 58, 5, 65, -169], # 有障碍物 瑞星杯子
     'right_start_position': [-95, 10, 58, 5, 65, -169],
 }
 
 DEFAULT_DEVICE_CONFIG = {
     'arms': {
-        'left_arm': False,
-        'right_arm': True,
+        'left_arm': True,
+        'right_arm': False,
     },
     'gripper': True,            # 是否启用夹爪控制
     'quest_vr': False,           # 是否启用QuestVR传感器
@@ -98,35 +97,17 @@ class Realman65Interface:
         if auto_setup:
             self.set_up()
 
-        # 控制线程运行标志与句柄（单臂）
-        self._control_running = threading.Event()
-        self._control_thread: Optional[threading.Thread] = None
+        self.control_thread = threading.Thread(target=self.start_control)
+        self.control_thread.start()
 
     def start_control(self):
-        """启动单臂关节发送线程（幂等）。"""
-        enabled_left = self.device_config['arms'].get('left_arm', False)
-        enabled_right = self.device_config['arms'].get('right_arm', False)
-        if not enabled_left and not enabled_right:
+        if not self.device_config['arms']['left_arm'] and not self.device_config['arms']['right_arm']:
             return
-        if self._control_running.is_set():
-            return
-        self._control_running.set()
-        arm_name = 'left_arm' if enabled_left else 'right_arm'
-        if not self._control_thread or not self._control_thread.is_alive():
-            self._control_thread = threading.Thread(
-                target=self.send_update_joint_angles, args=(arm_name,), daemon=True
-            )
-            self._control_thread.start()
-
-    def stop_control(self):
-        """停止单臂关节发送线程并清理（幂等）。"""
-        self._control_running.clear()
-        try:
-            if self._control_thread and self._control_thread.is_alive():
-                self._control_thread.join(timeout=1.0)
-        except Exception:
-            pass
-        self._control_thread = None
+        if self.device_config['arms']['left_arm']:
+            arm_name = 'left_arm'
+        elif self.device_config['arms']['right_arm']:
+            arm_name = 'right_arm'
+        self.send_update_joint_angles(arm_name)
 
     def set_up(self) -> None:
         """连接并初始化已启用的机械臂。"""
@@ -206,14 +187,12 @@ class Realman65Interface:
     def send_update_joint_angles(self,arm_name):
         try:
             controller = self._ensure_arm_ready(arm_name)
-            while self._control_running.is_set():
+            while True:
                 if not self.init_ik:
                     time.sleep(0.1)
                     continue
-                # joint_rad  = self.low_pass_filter(self.target_joint_angles, arm_name)
-                joint_rad = self.target_joint_angles
+                joint_rad  = self.low_pass_filter(self.target_joint_angles, arm_name)
                 if joint_rad is None:
-                    time.sleep(0.01)
                     continue
                 joint_deg = np.rad2deg(joint_rad)
                 success = controller.controller.rm_movej_canfd(joint_deg.tolist(), False)
@@ -221,7 +200,7 @@ class Realman65Interface:
                     raise RuntimeError(f"发送关节角度失败，返回码: {success}")
                 time.sleep(0.005)
         except Exception as e:
-            cprint(f"发送关节角度线程异常: {e}",color='red')
+            print(f"发送关节角度线程异常: {e}")
 
     def set_joint_angles(self,
                          arm_name: str,

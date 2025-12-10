@@ -14,13 +14,14 @@ from rclpy.time import Time
 import tf2_ros
 
 from realman65.my_robot.realman_65_interface_dual import Realman65Interface
-from realman65.utils.data_handler import debug_print
 
 from std_msgs.msg import String, Bool   
 import json
 
 from termcolor import cprint
 
+
+import sys
 
 ADJ_MAT = np.array([
     [-1, 0,  0, 0],
@@ -54,72 +55,6 @@ class TFTeleopClient(rclpy.node.Node):
             self._on_controller_state_cb(payload)
 
 
-def euler_to_rot(euler_xyz: np.ndarray) -> R:
-    return R.from_euler("xyz", euler_xyz, degrees=False)
-
-
-def retarget_once(side: str, vr_pose: np.ndarray, robot_pose: np.ndarray) -> None:
-    """根据当前 VR/机械臂姿态求一次偏移（按左右臂分开）。"""
-    global pos_offset_left, rot_offset_left, left_retarget_done
-    global pos_offset_right, rot_offset_right, right_retarget_done
-
-    vr_pos = vr_pose[:3]
-    vr_rot = euler_to_rot(vr_pose[3:])
-
-    rb_pos = robot_pose[:3]
-    rb_rot = euler_to_rot(robot_pose[3:])
-
-    if side == "left":
-        pos_offset_left = rb_pos - vr_pos
-        rot_offset_left = vr_rot.inv() * rb_rot
-        left_retarget_done = True
-        debug_print("teleop", f"Left retarget OK, pos_offset={pos_offset_left}", "INFO")
-    elif side == "right":
-        pos_offset_right = rb_pos - vr_pos
-        rot_offset_right = vr_rot.inv() * rb_rot
-        right_retarget_done = True
-        debug_print("teleop", f"Right retarget OK, pos_offset={pos_offset_right}", "INFO")
-
-
-def apply_retarget(side: str, vr_pose: np.ndarray) -> np.ndarray:
-    """把当前 VR 位姿映射为机械臂目标位姿（左右臂分开）。"""
-    if side == "left":
-        if pos_offset_left is None or rot_offset_left is None:
-            return vr_pose.copy()
-        mapped_pos = vr_pose[:3] + pos_offset_left
-        mapped_rot = (euler_to_rot(vr_pose[3:]) * rot_offset_left).as_euler("xyz")
-    else:
-        if pos_offset_right is None or rot_offset_right is None:
-            return vr_pose.copy()
-        mapped_pos = vr_pose[:3] + pos_offset_right
-        mapped_rot = (euler_to_rot(vr_pose[3:]) * rot_offset_right).as_euler("xyz")
-    return np.concatenate([mapped_pos, mapped_rot])
-
-
-def lookup_hand_pose(tf_client, parent_frame: str, child_frame: str):
-    try:
-        transform = tf_client.tf_buffer.lookup_transform(parent_frame, child_frame, Time())
-    except Exception as exc:
-        try:
-            debug_print("teleop", f"TF lookup failed for {child_frame}: {exc}", "WARNING")
-        except Exception:
-            pass
-        return None
-
-    pos = transform.transform.translation
-    quat = transform.transform.rotation
-    rot = R.from_quat([quat.x, quat.y, quat.z, quat.w]).as_matrix()
-
-    pose_mat = np.eye(4)
-    pose_mat[:3, :3] = rot
-    pose_mat[:3, 3] = [pos.x, pos.y, pos.z]
-
-    pose_mat = ADJ_MAT @ pose_mat
-
-    adj_pos = pose_mat[:3, 3]
-    adj_rpy = R.from_matrix(pose_mat[:3, :3]).as_euler("xyz")
-
-    return np.concatenate([adj_pos, adj_rpy])
 
 
 # ==================== 线程函数 ====================
@@ -208,7 +143,7 @@ class DualArmTeleop:
             self._start_time = time.time()
         else:
             self._start_time = None
-        debug_print("teleop", "Teleop started.", "INFO")
+        cprint("[teleop] Teleop started.", "cyan")
 
     def stop(self) -> None:
         """优雅停止所有线程并清理 ROS（幂等，可重复调用）。"""
@@ -219,7 +154,7 @@ class DualArmTeleop:
         try:
             self.rm_interface.stop_control()
         except Exception:
-            debug_print("teleop", "Failed to stop control thread.", "WARNING")
+            cprint("[teleop] Failed to stop control thread.", "yellow")
 
         # 等待线程结束
         if self.vr_thread:
@@ -232,7 +167,7 @@ class DualArmTeleop:
             try:
                 self.executor.shutdown()
             except Exception:
-                debug_print("teleop", "Failed to shutdown executor.", "WARNING")
+                cprint("[teleop] Failed to shutdown executor.", "yellow")
         if self.tf_client:
             try:
                 self.tf_client.destroy_node()
@@ -245,7 +180,7 @@ class DualArmTeleop:
         if self.spin_thread:
             self.spin_thread.join(timeout=2.0)
 
-        debug_print("teleop", "Teleop stopped.", "INFO")
+        cprint("[teleop] Teleop stopped.", "cyan")
 
     def run(self) -> None:
         """阻塞运行，直到 CTRL+C 或自动退出。"""
@@ -255,10 +190,10 @@ class DualArmTeleop:
                 time.sleep(0.2)
                 if self.enable_auto_shutdown and self.auto_shutdown_s is not None and self._start_time is not None:
                     if time.time() - self._start_time >= self.auto_shutdown_s:
-                        debug_print("teleop", f"Auto shutdown after {self.auto_shutdown_s}s.", "INFO")
+                        cprint(f"[teleop] Auto shutdown after {self.auto_shutdown_s}s.", "cyan")
                         break
         except KeyboardInterrupt:
-            debug_print("teleop", "User requested shutdown.", "INFO")
+            cprint("[teleop] User requested shutdown.", "cyan")
         finally:
             # 先停止线程与 ROS，再做复位，避免并发调用 SDK
             self.stop()
@@ -272,6 +207,7 @@ class DualArmTeleop:
         """控制器状态订阅回调：更新夹爪命令（边沿触发）。"""
         left = payload.get("left", {})
         right = payload.get("right", {})
+        # cprint(f"[teleop] controller state: {payload}", "blue")
         left_index_val = float(left.get("index_trigger", 0.0))
         left_index_pressed = left_index_val > 0.5  # 阈值可按需调整
         left_hand_val = float(left.get("hand_trigger", 0.0))
@@ -280,7 +216,8 @@ class DualArmTeleop:
         right_index_pressed = right_index_val > 0.5
         right_hand_val = float(right.get("hand_trigger", 0.0))
         right_hand_pressed = right_hand_val > 0.8
-
+        
+        # cprint(f"[DEBUG] 左手hand_trigger数值：{left_hand_val:.2f}（是否按下：{left_hand_pressed}）", "green")
         with self.controller_lock:
             # 左侧 index_trigger 控制夹爪：按下=夹紧，松开=松开（边沿触发）
             if left_index_pressed != self.last_button_state["left_index_trigger"]:
@@ -296,29 +233,31 @@ class DualArmTeleop:
             if right_index_pressed != self.last_button_state["right_index_trigger"]:
                 self.right_pending_gripper_cmd = 1 if right_index_pressed else 0
             self.last_button_state["right_index_trigger"] = right_index_pressed
-            # 右手扳机：停止遥操并复位（边沿触发，后台执行）
+            # 右手扳机：紧急停止并杀掉程序（边沿触发）
             if right_hand_pressed and not self.last_button_state["right_hand_trigger"]:
-                threading.Thread(target=self._disable_teleop_and_reset, daemon=True).start()
+                self.tf_client.get_logger().fatal("Emergency stop triggered by right_hand_trigger! Shutting down.")
+                self._emergency_shutdown()
             self.last_button_state["right_hand_trigger"] = right_hand_pressed
 
-    def _perform_stop_and_reset(self) -> None:
-        """在独立线程中执行停止控制与复位，避免在 ROS 回调内阻塞或死锁。"""
+    def _emergency_shutdown(self) -> None:
+        """执行紧急关闭，停止所有活动并退出程序。"""
+        # 停止所有循环
+        self._running.clear()
+        # 立即停止机器人
         try:
-            debug_print("teleop", "Emergency stop requested: stopping workers", "WARNING")
-            # 停止循环并统一走 stop() 清理（包含 stop_control）
-            self._running.clear()
-            try:
-                self.stop()
-            except Exception as exc:
-                debug_print("teleop", f"teleop stop failed: {exc}", "WARNING")
-            # 机械臂复位
-            try:
-                self.rm_interface.reset()
-            except Exception as exc:
-                debug_print("teleop", f"reset failed: {exc}", "WARNING")
-            debug_print("teleop", "Emergency stop sequence completed", "INFO")
-        except Exception as exc:
-            debug_print("teleop", f"Emergency stop unexpected error: {exc}", "WARNING")
+            self.rm_interface.stop_control() # 尝试发送停止指令
+        except Exception as e:
+            self.tf_client.get_logger().error(f"Failed to send stop command to robot: {e}")
+
+        # 销毁ROS节点并关闭rclpy
+        if self.tf_client:
+            self.tf_client.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+        # 强制退出程序
+        sys.exit(1) # 使用非零代码表示异常退出
+
 
     @staticmethod
     def _euler_to_rot(euler_xyz: np.ndarray) -> R:
@@ -336,12 +275,12 @@ class DualArmTeleop:
             self.pos_offset_left = rb_pos - vr_pos
             self.rot_offset_left = vr_rot.inv() * rb_rot
             self.left_retarget_done = True
-            debug_print("teleop", f"Left retarget OK, pos_offset={self.pos_offset_left}", "INFO")
+            cprint(f"[teleop] Left retarget OK, pos_offset={self.pos_offset_left}", "cyan")
         elif side == "right":
             self.pos_offset_right = rb_pos - vr_pos
             self.rot_offset_right = vr_rot.inv() * rb_rot
             self.right_retarget_done = True
-            debug_print("teleop", f"Right retarget OK, pos_offset={self.pos_offset_right}", "INFO")
+            cprint(f"[teleop] Right retarget OK, pos_offset={self.pos_offset_right}", "cyan")
 
     def _apply_retarget(self, side: str, vr_pose: np.ndarray) -> np.ndarray:
         """把当前 VR 位姿映射为机械臂目标位姿（左右臂分开）。"""
@@ -363,7 +302,7 @@ class DualArmTeleop:
         try:
             transform = self.tf_client.tf_buffer.lookup_transform(self.parent_frame, child_frame, Time())
         except Exception as exc:
-            debug_print("teleop", f"TF lookup failed for {child_frame}: {exc}", "WARNING")
+            cprint(f"[teleop] TF lookup failed for {child_frame}: {exc}", "yellow")
             return None
 
         pos = transform.transform.translation
@@ -397,6 +336,8 @@ class DualArmTeleop:
                 continue
             with self.pose_lock:
                 robot_pose_map = self.rm_interface.get_end_effector_pose()
+                # cprint(f"{robot_pose_map.get('left_arm')}", color='blue')
+                # cprint(f"{robot_pose_map.get('right_arm')}", color='yellow')
                 if left_vr_pose is not None:
                     if not self.left_retarget_done and robot_pose_map and "left_arm" in robot_pose_map:
                         robot_pose_left = np.asarray(robot_pose_map["left_arm"], dtype=np.float64)
@@ -430,11 +371,11 @@ class DualArmTeleop:
             try:
                 # 任意一侧有目标就下发（另一侧传 None）
                 if left_pose_to_send is not None or right_pose_to_send is not None:
-                    cprint(f"left_pose_to_send: {left_pose_to_send}", "green")
-                    cprint(f"right_pose_to_send: {right_pose_to_send}", "red")
-                    # self.rm_interface.update(left_pose_to_send, right_pose_to_send)
+                    # cprint(f"left_pose_to_send: {left_pose_to_send}", "green")
+                    # cprint(f"right_pose_to_send: {right_pose_to_send}", "red")
+                    self.rm_interface.update(left_pose_to_send, right_pose_to_send)
             except Exception as exc:
-                debug_print("teleop", f"send dual pose failed: {exc}", "WARNING")
+                cprint(f"[teleop] send dual pose failed: {exc}", "yellow")
 
             # 夹爪命令下发
             left_cmd = None
@@ -448,17 +389,13 @@ class DualArmTeleop:
                     self.right_pending_gripper_cmd = None
 
             if left_cmd is not None:
-                debug_print("cmd", {"left": left_cmd}, "INFO")
-                try:
-                    self.rm_interface.set_gripper("left_arm", left_cmd)
-                except Exception as exc:
-                    debug_print("teleop", f"left gripper command failed: {exc}", "WARNING")
+                cprint(f"[cmd] left={left_cmd}", "cyan")
+                # 异步执行夹爪命令，避免阻塞主控制循环
+                threading.Thread(target=self._async_set_gripper, args=("left_arm", left_cmd), daemon=True).start()
             if right_cmd is not None:
-                debug_print("cmd", {"right": right_cmd}, "INFO")
-                try:
-                    self.rm_interface.set_gripper("right_arm", right_cmd)
-                except Exception as exc:
-                    debug_print("teleop", f"right gripper command failed: {exc}", "WARNING")
+                cprint(f"[cmd] right={right_cmd}", "cyan")
+                # 异步执行夹爪命令，避免阻塞主控制循环
+                threading.Thread(target=self._async_set_gripper, args=("right_arm", right_cmd), daemon=True).start()
 
             # 自动退出计时（如果启用）
             if self.enable_auto_shutdown and self.auto_shutdown_s is not None and self._start_time is not None:
@@ -468,6 +405,14 @@ class DualArmTeleop:
             time.sleep(period)
 
 
+    def _async_set_gripper(self, arm_id: str, cmd: int) -> None:
+        """在后台线程中安全地执行阻塞的夹爪命令。"""
+        try:
+            self.rm_interface.set_gripper(arm_id, cmd)
+        except Exception as exc:
+            cprint(f"[teleop] {arm_id} gripper command failed: {exc}", "yellow")
+
+
     # -------------------- Teleop 开关与复位 --------------------
     def _enable_teleop(self) -> None:
         """开启遥操作：启动底层控制会话并允许VR/臂线程工作。"""
@@ -475,56 +420,16 @@ class DualArmTeleop:
         try:
             self.rm_interface.start_control()
         except Exception as exc:
-            debug_print("teleop", f"start_control failed: {exc}", "WARNING")
+            cprint(f"[teleop] start_control failed: {exc}", "yellow")
         self._teleop_enabled = True
-        debug_print("teleop", "Teleop enabled by left hand trigger.", "INFO")
-
-    def _disable_teleop_and_reset(self) -> None:
-        """停止遥操并复位机械臂（后台执行，避免阻塞主循环）。"""
-        # 先关闭遥操，防止继续下发控制
-        self._teleop_enabled = False
-        # 清理待发夹爪命令，避免误发
-        with self.controller_lock:
-            self.left_pending_gripper_cmd = None
-            self.right_pending_gripper_cmd = None
-
-        def _do_stop_and_reset():
-            try:
-                # 停止底层控制线程，避免与复位并发
-                try:
-                    self.rm_interface.stop_control()
-                except Exception as exc:
-                    debug_print("teleop", f"stop_control failed: {exc}", "WARNING")
-                time.sleep(0.1)
-                # 执行复位
-                debug_print("teleop", "Resetting robot (via right hand trigger)...", "INFO")
-                try:
-                    self.rm_interface.reset()
-                except Exception as exc:
-                    debug_print("teleop", f"reset failed: {exc}", "WARNING")
-                # 复位后清空重定标与目标，确保下一次开启遥操重新配准
-                with self.pose_lock:
-                    self.left_target_pose = None
-                    self.right_target_pose = None
-                    self.pos_offset_left = None
-                    self.rot_offset_left = None
-                    self.pos_offset_right = None
-                    self.rot_offset_right = None
-                    self.left_retarget_done = False
-                    self.right_retarget_done = False
-                debug_print("teleop", "Robot reset completed and retarget state cleared.", "INFO")
-            except Exception as exc:
-                debug_print("teleop", f"disable+reset failed unexpectedly: {exc}", "WARNING")
-
-        threading.Thread(target=_do_stop_and_reset, daemon=True).start()
-
+        cprint("[teleop] Teleop enabled by left hand trigger.", "cyan")
 
 
 # ==================== 主入口 ====================
 
 def main() -> None:
     # 初始化接口并连接
-    debug_print("teleop", "Initializing RM65 interface...", "INFO")
+    cprint("[teleop] Initializing RM65 interface...", "cyan")
     rm_interface = Realman65Interface(auto_setup=False)
     rm_interface.set_up()
     rm_interface.reset()

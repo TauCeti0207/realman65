@@ -31,6 +31,9 @@ from realman65.my_robot.pink_ik import ArmIKSolver
 from realman65.my_robot.dual_pink_ik import DualArmIKSolver
 import threading
 
+from termcolor import cprint
+
+
 DEFAULT_RM65_CONFIG = {
     'left_arm_ip': "192.168.1.18",
     'right_arm_ip': "192.168.2.19",
@@ -43,7 +46,9 @@ DEFAULT_JOINT_CONFIG = {
     # 'left_start_position': [-1.48, 33.7, 79, 0, 60, -158], # 最开始初始
     # 'left_start_position': [-35, 36, 86, 1.9, 50, -158], # temp 靠近杯子
     # 'left_start_position': [-95, 10, 58, 5, 65, -169], # 有障碍物 棕色杯子
-    'left_start_position': [0, 6, 52, -4, 88, -180], # 双臂
+    # 'left_start_position': [0, 6, 52, -4, 88, -178], # 双臂
+    # 'left_start_position': [0, 44, 114, 3, -66, -1], # 双臂
+    'left_start_position': [0, 44, 114, 3, -66, 179], # 双臂 接口朝上
     # 'left_start_position': [-5, 10, 58, 5, 65, -169], # 有障碍物 瑞星杯子
     'right_start_position': [0, 6, 52, -4, 88, -148], # 双臂
 }
@@ -88,9 +93,6 @@ class Realman65Interface:
         
         
         self.dual_ik_solver = DualArmIKSolver(
-            # "/home/shui/cloudfusion/DA_D03_description/urdf/rm_65_dual.urdf",
-            # "left_hand_gripper",
-            # "right_hand_gripper",
             "/home/shui/cloudfusion/DA_D03_description/urdf/rm_65_dual_without_gripper.urdf",
             "left_ee_link",
             "right_ee_link",
@@ -199,8 +201,6 @@ class Realman65Interface:
         right_start_pose =  self.joint_config.get('right_start_position')
         self.set_joint_angles('left_arm',left_start_pose)
         self.set_joint_angles('right_arm',right_start_pose)
-        debug_print("robot", "left_arm reset to preset joint angles", "INFO")
-        debug_print("robot", "right_arm reset to preset joint angles", "INFO")
         self.set_gripper('left_arm',0)
         self.set_gripper('right_arm',0)
 
@@ -263,6 +263,8 @@ class Realman65Interface:
             right_target_quat = None
         
         joint_target = self.dual_ik_solver.move_dual_arm(left_target_pos, left_target_quat, right_target_pos, right_target_quat)
+        # cprint(f'{joint_target}',color='red')
+        
         if joint_target is None:
             return
         # 缓存目标角度
@@ -327,8 +329,7 @@ class Realman65Interface:
                     f"{arm_name} rm_movej failed with code {result}")
         else:
             controller.set_joint(joint_list)
-        debug_print(
-            "robot", f"{arm_name} joint command -> {joint_list}", "INFO")
+        debug_print("robot", f"{arm_name} joint command -> {joint_list}", "INFO")
 
         # -------------------- 新增：夹爪控制接口 --------------------
     
@@ -362,8 +363,7 @@ class Realman65Interface:
                 f"set_gripper value 必须是 0（松开）或 1（夹紧），当前输入：{value}")
 
         controller = self._ensure_arm_ready(arm_name)
-        debug_print(
-            "robot", f"{arm_name} 夹爪控制：{'夹紧' if value == 1 else '松开'}force={force}）", "INFO")
+        # debug_print("robot", f"{arm_name} 夹爪控制：{'夹紧' if value == 1 else '松开'}force={force}）", "INFO")
 
         # 调用底层SDK方法
         if value == 1:
@@ -386,7 +386,45 @@ class Realman65Interface:
                 -4: "超时"
             }.get(result, f"未知错误（状态码：{result}）")
             raise RuntimeError(f"{arm_name} 夹爪控制失败：{error_msg}")
+        
+    
+    def get_gripper_actpos(self,
+                       arm_names: Optional[Iterable[str]] = None,
+                       retries: int = 3,
+                       retry_delay: float = 0.2) -> Dict[str, Optional[int]]:
+        """
+        适配双臂：获取夹爪开口度
+        Args:
+            arm_names: 要查询的机械臂名称列表（None=查询所有启用的机械臂）
+            retries: 失败重试次数（默认3）
+            retry_delay: 重试间隔（默认0.2秒）
+        Returns:
+            字典：key=机械臂名称，value=开口度数值（int）/ None（获取失败）
+        """
+        # 夹爪未启用则返回空字典
+        if not self.device_config.get('gripper', False):
+            print("夹爪未启用，返回空开口度")  # 极简版用print替代debug_print，需保留则改回
+            return {}
 
+        results: Dict[str, Optional[int]] = {}
+        # 遍历目标机械臂（双臂）
+        for arm_name in self._iter_arms(arm_names):
+            controller = self._ensure_arm_ready(arm_name)  # 复用已有方法获取控制器
+            # 直接获取开口度（核心逻辑）
+            actpos = None
+            for _ in range(retries):
+                try:
+                    # 调用底层接口获取状态，直接提取actpos
+                    succ, gripper_dict = controller.controller.rm_get_gripper_state()
+                    if succ == 0:
+                        actpos = gripper_dict.get("actpos")  # 直接拿开口度
+                        break
+                    time.sleep(retry_delay)
+                except Exception:
+                    time.sleep(retry_delay)
+            results[arm_name] = int(actpos) if actpos is not None else None
+        return results
+    
     # -------------------- 新增：夹爪状态获取接口 --------------------
     def get_gripper_state(self,
                           arm_names: Optional[Iterable[str]] = None,
@@ -411,7 +449,6 @@ class Realman65Interface:
             controller = self._ensure_arm_ready(arm_name)
             state = self._fetch_gripper_state(controller, retries, retry_delay)
             results[arm_name] = state
-            # debug_print("robot", f"{arm_name} 夹爪状态：{'夹紧' if state == 1 else '松开' if state == 0 else '未知'}", "INFO")
         return results
 
     # -------------------- 新增：内部辅助方法 --------------------
@@ -448,8 +485,8 @@ class Realman65Interface:
                     return 1 if actpos <= 100 else 0
                 else:
                     # 未知mode：默认按开口度判断（接近最小=夹紧，接近最大=松开）
-                    debug_print(
-                        "robot", f"{controller.name} 未知夹爪mode：{mode}，按开口度判断", "WARNING")
+                    # debug_print(
+                        # "robot", f"{controller.name} 未知夹爪mode：{mode}，按开口度判断", "WARNING")
                     return 1 if actpos <= 100 else 0
 
             except Exception as exc:

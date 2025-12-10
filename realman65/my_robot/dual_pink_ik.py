@@ -19,6 +19,7 @@ import threading
 import socket
 import json
 from typing import Dict, Iterable, Optional, Union
+# from realman65.my_robot.realman_65_interface_dual import DEFAULT_JOINT_CONFIG
 
 class DualArmIKSolver:
     def __init__(self, urdf_path,
@@ -36,7 +37,8 @@ class DualArmIKSolver:
 
         # === Step 2: Initialize Pink configuration ===
         # 默认从 home 姿态开始，你可按需要修改为你的双臂初始姿态
-        q0 = np.radians([-1.48, 33.7, 79, 0, 60, -158, -1.48, 33.7, 79, 0, 60, -158])
+        # q0 = np.radians([-1.48, 33.7, 79, 0, 60, -158, -1.48, 33.7, 79, 0, 60, -158])
+        q0 = np.radians([0, 44, 114, 3, -66, 179, 0, 6, 52, -4, 88, -148])
         self.configuration = pink.Configuration(self.model, self.data, q0)
 
         # === Step 3: Visualization ===

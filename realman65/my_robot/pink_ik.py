@@ -70,7 +70,7 @@ class ArmIKSolver:
         # self.fk = FKServer(urdf_path,free_flyer=False)
         # self.rate = RateLimiter(frequency=1/self.dt, warn=False)
         self.calculate_threshold = 1e-2
-        self.max_iter = 3e3
+        self.max_iter = 1000
 
     def set_target(self, pos, quat_xyzw):
         """

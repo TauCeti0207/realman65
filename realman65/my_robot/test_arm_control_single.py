@@ -1,76 +1,29 @@
 #!/usr/bin/env python
 
 
-# from realman65.my_robot.realman_65_interface_right import Realman65Interface
-from realman65.my_robot.realman_65_interface_dual import Realman65Interface
+from realman65.my_robot.realman_65_interface import Realman65Interface
 import time
 from termcolor import cprint
-from Robotic_Arm.rm_robot_interface import *
-import numpy as np
 
 
 
 def test_gripper():
     interface = Realman65Interface(auto_setup=False)
     interface.set_up()
-    # interface.reset()
-    # interface.set_gripper('right_arm',0)
-    # interface.set_gripper('right_arm',0)
-    interface.set_gripper('right_arm',1)
-    interface.set_gripper('left_arm',1)
     # interface.set_gripper('left_arm',1)
-    gripper_state = interface.get_gripper_state()
-    cprint(f"gripper_state: {gripper_state}", 'blue')
-
-def test_4gen_gripper():
-
-    # 实例化RoboticArm类
-    arm = RoboticArm(rm_thread_mode_e.RM_TRIPLE_MODE_E)
-
-    # 创建机械臂连接，打印连接id
-    handle = arm.rm_create_robot_arm("192.168.1.18", 8080)
-    print(f"handle.id: {handle.id}")
+    interface.set_gripper('left_arm',0)
+    interface.set_gripper('right_arm',0)
     
-    '''
-     - enable_state (int): 夹爪使能标志，0 表示未使能，1 表示使能
-        - status (int): 夹爪在线状态，0 表示离线， 1表示在线
-        - error (int): 夹爪错误信息，低8位表示夹爪内部的错误信息bit5-7 保留bit4 内部通bit3 驱动器bit2 过流 bit1 过温bit0 堵转
-        - mode (int): 当前工作状态：1 夹爪张开到最大且空闲，2 夹爪闭合到最小且空闲，3 夹爪停止且空闲，4 夹爪正在闭合，5 夹爪正在张开，6 夹爪闭合过程中遇到力控停止
-        - current_force (int): 夹爪当前的压力，单位g
-        - temperature (int): 当前温度，单位℃
-        - actpos (int): 夹爪开口度
-        
-        arm.rm_get_gripper_state(): (0, {'enable_state': 1, 'status': 0, 'error': 0, 'mode': 0, 'current_force': 0, 'temperature': 0, 'actpos': 0})
-        arm.rm_set_gripper_pick(500, 200, True, 10): -5
-    '''
-    print(f"arm.rm_get_gripper_state(): {arm.rm_get_gripper_state()}")
-    
-    # print(f"arm.rm_set_gripper_pick(500, 200, True, 10): {arm.rm_set_gripper_pick(500, 200, True, 10)}")
-    
-    # print(f"arm.rm_set_gripper_release(500, True, 10): {arm.rm_set_gripper_release(500, True, 10)}")
-
-    arm.rm_delete_robot_arm()
-
-def test_get_gripper_state():
-    interface = Realman65Interface(auto_setup=False)
-    interface.set_up()
-    gripper_state = interface.get_gripper_actpos()
-    left_actpos = gripper_state.get('left_arm')/1000
-    right_actpos = gripper_state.get('right_arm')/1000
-    cprint(f"left_actpos: {left_actpos}", 'green')
-    cprint(f"right_actpos: {right_actpos}", 'yellow')
-    cprint(f"gripper_state: {gripper_state}", 'red')
 
 def test_get_state():
     interface = Realman65Interface(auto_setup=False)
     interface.set_up()
-    interface.reset()
+    # interface.reset()
     ee_pose = interface.get_end_effector_pose()
     cprint(f"ee_pose: {ee_pose}", 'green')
     
     joint_angle = interface.get_joint_angles()
     cprint(f"joint_angle: {joint_angle}", 'red')
-    cprint(f"joint_angle['left_arm']: {joint_angle['left_arm']}", 'yellow')
     
     gripper_state = interface.get_gripper_state()
     cprint(f"gripper_state: {gripper_state}", 'blue')
@@ -199,8 +152,6 @@ def test_last_joint_increment():
 
 
 
-
-
 def test_reset():
     interface = Realman65Interface(auto_setup=True)
     interface.set_up()
@@ -222,11 +173,9 @@ if __name__ == "__main__":
     # interface.reset()
     
     try:
-        test_gripper()
-        # test_4gen_gripper()
-        # test_get_gripper_state()
+        # test_gripper()
         # test_send_single_angle_dual()
-        # test_get_state()
+        test_get_state()
         # test_control_arm()
         # test_reset()
     except KeyboardInterrupt:
