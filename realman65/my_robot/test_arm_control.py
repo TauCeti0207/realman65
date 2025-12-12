@@ -213,7 +213,34 @@ def test_reset():
 
     # controller = interface._ensure_arm_ready(arm_name)
     
+def test_force_data():
 
+    # 实例化RoboticArm类
+    arm = RoboticArm(rm_thread_mode_e.RM_TRIPLE_MODE_E)
+
+    # 创建机械臂连接，打印连接id
+    handle = arm.rm_create_robot_arm("192.168.1.18", 8080)
+    print(handle.id)
+
+    print(arm.rm_get_force_data())
+
+    arm.rm_delete_robot_arm()
+
+
+def test_get_arm_info():
+
+    # 初始化为三线程模式
+    arm = RoboticArm(rm_thread_mode_e.RM_TRIPLE_MODE_E)
+
+    # 创建机械臂连接，打印连接id
+    handle = arm.rm_create_robot_arm("192.168.2.19", 8080)
+    print(handle.id)
+
+    # 获取机械臂型号、末端力传感器版本及自由度信息
+    print(arm.rm_get_robot_info())
+
+    # 删除指定机械臂对象
+    arm.rm_delete_robot_arm()
 
 if __name__ == "__main__":
 
@@ -222,7 +249,9 @@ if __name__ == "__main__":
     # interface.reset()
     
     try:
-        test_gripper()
+        # test_gripper()
+        # test_force_data()
+        test_get_arm_info()
         # test_4gen_gripper()
         # test_get_gripper_state()
         # test_send_single_angle_dual()
