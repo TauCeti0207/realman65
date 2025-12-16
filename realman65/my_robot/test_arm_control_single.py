@@ -168,9 +168,6 @@ def test_reset():
 
 if __name__ == "__main__":
 
-    # interface = Realman65Interface(auto_setup=True)
-    # interface.set_up()
-    # interface.reset()
     
     try:
         # test_gripper()

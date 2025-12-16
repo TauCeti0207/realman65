@@ -59,12 +59,6 @@ DEFAULT_DEVICE_CONFIG = {
         'right_arm': True,  # 默认启用右臂，便于双臂控制
     },
     'gripper': True,            # 是否启用夹爪控制
-    'quest_vr': False,           # 是否启用QuestVR传感器
-}
-
-DEFAULT_COLLECT_CONFIG = {
-    "arm": ["joint", "qpos", "gripper"],
-    "teleop": ["end_pose", "extra", "raw_pose"],
 }
 
 
@@ -110,7 +104,7 @@ class Realman65Interface:
         self.right_control_thread: Optional[threading.Thread] = None
 
         
-        # 新增：缓存“上次已发送的关节角”（弧度）
+        # 缓存“上次已发送的关节角”（弧度）
         self._last_sent_joint_rad = {
             'left_arm': None,
             'right_arm': None,
@@ -185,17 +179,6 @@ class Realman65Interface:
             debug_print(
                 "robot", f"{arm_name} connected to {self.rm_config[ip_key]}", "INFO")
 
-    # def reset(self) -> None:
-    #     """将已启用的机械臂复位到预设安全姿态。"""
-    #     for arm_name, controller in self.controllers.items():
-    #         joint_key = f"{arm_name.replace('_arm', '')}_start_position"
-    #         start_pose = self.joint_config.get(joint_key)
-    #         if start_pose is None:
-    #             debug_print("robot", f"{arm_name} 缺少复位角度配置，跳过", "WARNING")
-    #             continue
-    #         controller.reset(start_pose)
-    #         debug_print(
-    #             "robot", f"{arm_name} reset to preset joint angles", "INFO")
     def reset(self) -> None:
         left_start_pose =  self.joint_config.get('left_start_position')
         right_start_pose =  self.joint_config.get('right_start_position')
@@ -263,7 +246,6 @@ class Realman65Interface:
             right_target_quat = None
         
         joint_target = self.dual_ik_solver.move_dual_arm(left_target_pos, left_target_quat, right_target_pos, right_target_quat)
-        # cprint(f'{joint_target}',color='red')
         
         if joint_target is None:
             return
@@ -425,7 +407,7 @@ class Realman65Interface:
             results[arm_name] = int(actpos) if actpos is not None else None
         return results
     
-    # -------------------- 新增：夹爪状态获取接口 --------------------
+    # -------------------- 夹爪状态获取接口 --------------------
     def get_gripper_state(self,
                           arm_names: Optional[Iterable[str]] = None,
                           retries: int = 3,
@@ -588,4 +570,4 @@ class Realman65Interface:
 if __name__ == "__main__":
     # 环境变量设置（日志级别）
     print("pass")
-    # test_gripper()
+    

@@ -204,14 +204,8 @@ def test_last_joint_increment():
 def test_reset():
     interface = Realman65Interface(auto_setup=True)
     interface.set_up()
-    # interface.set_joint_angles('left_arm', [30, 6, 52, -4, 88, -180])
-    # interface.set_joint_angles('right_arm', [30, 6, 52, -4, 88, -180])
-    # interface.set_gripper('left_arm', 0)
-    # interface.set_gripper('right_arm', 0)
     interface.reset()
 
-
-    # controller = interface._ensure_arm_ready(arm_name)
     
 def test_force_data():
 
@@ -251,13 +245,13 @@ if __name__ == "__main__":
     try:
         # test_gripper()
         # test_force_data()
-        test_get_arm_info()
+        # test_get_arm_info()
         # test_4gen_gripper()
         # test_get_gripper_state()
         # test_send_single_angle_dual()
         # test_get_state()
         # test_control_arm()
-        # test_reset()
+        test_reset()
     except KeyboardInterrupt:
         # interface.reset()
         pass
